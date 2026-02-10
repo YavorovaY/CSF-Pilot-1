@@ -1,0 +1,77 @@
+#### Get the read length and the barcode lengths - usally encoded within the BCL files - RunInfo.xml ####
+
+cd /scratch/mozturk/Pilot1/ATACBcl/CSF_multiome_scATAC_bcl/vol/rimlsrawdata/bcl/2026/260126_VH01488_244_AAHGNN5M5
+grep -A 10 "<Reads>" RunInfo.xml
+
+#### OUTPUT ####
+
+ <Reads>
+                        <Read Number="1" NumCycles="59" IsIndexedRead="N" IsReverseComplement="N"/>
+                        <Read Number="2" NumCycles="10" IsIndexedRead="Y" IsReverseComplement="N"/>
+                        <Read Number="3" NumCycles="10" IsIndexedRead="Y" IsReverseComplement="Y"/>
+                        <Read Number="4" NumCycles="59" IsIndexedRead="N" IsReverseComplement="N"/>
+                </Reads>
+                <FlowcellLayout LaneCount="1" SurfaceCount="2" SwathCount="6" TileCount="11">
+                        <TileSet TileNamingConvention="FourDigit">
+                                <Tiles>
+                                        <Tile>1_1101</Tile>
+                                        <Tile>1_1102</Tile>
+
+
+
+#### Demultiplex the ATAC part ####
+
+# Important to understand that this is a single-indexed data type where I7 is the index sequences - for Chromium data these are 4x8bp Illumina style barcodes, while the I5 are 10x style barcodes which are not used for demultiplexing.
+# Therefore, the demultiplexing should happen with Bcl-convert (serial num: VH01488) and be single-index. Instructions can be found here: https://www.10xgenomics.com/support/software/cell-ranger-arc/latest/analysis/inputs/direct-demultiplexing-with-illumina-software
+*** Important note: According to Mumin we should use 2 mismatches instead of one, to get as high as possible number of reads.
+
+cd /scratch/mozturk/Pilot1
+mkdir -p ATAC_bclconvert_mm2
+cd ATAC_bclconvert_mm2
+
+cat > SampleSheet_ATAC_BCLConvert_mm2.csv << 'EOF'
+[Header]
+FileFormatVersion,2
+
+[BCLConvert_Settings]
+CreateFastqForIndexReads,1
+TrimUMI,0
+OverrideCycles,Y59;I8N2;U10;Y59
+BarcodeMismatchesIndex1,2
+
+[BCLConvert_Data]
+Sample_ID,index
+CSF_TT_C9_ATAC,ATCGCTCC
+CSF_TT_C9_ATAC,CCGTACAG
+CSF_TT_C9_ATAC,GATAGGTA
+CSF_TT_C9_ATAC,TGACTAGT
+EOF
+
+RUN=/scratch/mozturk/Pilot1/ATACBcl/CSF_multiome_scATAC_bcl/vol/rimlsrawdata/bcl/2026/260126_VH01488_244_AAHGNN5M5
+OUT=/scratch/mozturk/Pilot1/ATAC_bclconvert_mm2/fastqs
+
+rm -rf "$OUT"
+
+nice -n 19 ~/software/bcl-convert/usr/bin/bcl-convert \
+  --bcl-input-directory "$RUN" \
+  --output-directory "$OUT" \
+  --sample-sheet /scratch/mozturk/Pilot1/ATAC_bclconvert_mm2/SampleSheet_ATAC_BCLConvert_mm2.csv \
+  --bcl-num-parallel-tiles 1 \
+  --bcl-num-conversion-threads 6 \
+  --bcl-num-compression-threads 6
+
+
+#### Run FASTQC and MULTIQC on the demultiplexed data ####
+
+cd /scratch/mozturk/Pilot1/ATAC_bclconvert_mm2/fastqs
+mkdir -p qc_fastqc_multiqc
+
+nice -n 19 fastqc \
+  -t 6 \
+  *.fastq.gz \
+  -o qc_fastqc_multiqc
+
+cd qc_fastqc_multiqc
+
+nice -n 19 multiqc . \
+  --filename multiqc_report.html
