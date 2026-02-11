@@ -1,0 +1,50 @@
+### 1. Demultiplexing the Data ###
+
+# Unlike the ATAC data which was single indexed, this data is double indexed, meaning that the sequences of both I7 and I5 barcodes were known:
+# Index1 - I7 - TATCAGCCTA
+# Index2 - I5 - AGGACGAAAC
+# An inmportant note is that the installation of the BCL-convert software was not system-wide, therefore, it worked for a task as simple as single-indexed demux, but it did not work out for double-indexed demux.
+# Therefore, I was forced to use the older pipeline called bcl2fastq, which however, works as well.
+# Another difference between the ATAC and RNA demux processes, was that the ATAC was generated with 2 possible barcode bp mismatches, while the RNA was generated with one possible mismatch.
+
+cd /scratch/mozturk/Pilot1
+
+# 1) clean + recreate output folder
+rm -rf scRNA_bcl2fastq_mm1
+mkdir -p scRNA_bcl2fastq_mm1
+cd scRNA_bcl2fastq_mm1
+
+# 2) sample sheet (dual-index; this is the one from your sample sheet screenshot)
+cat > SampleSheet_GEX_TT_C9.csv << 'EOF'
+[Data]
+Sample_ID,Sample_Name,index,index2
+SI_TT_C9,SI_TT_C9,TATCAGCCTA,AGGACGAAAC
+EOF
+
+# 3) run bcl2fastq (creates I1 + I2 fastqs)
+nice -n 19 bcl2fastq \
+  -R /scratch/mozturk/Pilot1/scRNA_demux/unzip_scRNA_bcl/CSF_multiome_scRNA-Seq/vol/rimlsrawdata/bcl/2026/260127_VH01488_245_AAHGK72M5 \
+  --output-dir /scratch/mozturk/Pilot1/scRNA_bcl2fastq_mm1/fastqs \
+  --sample-sheet /scratch/mozturk/Pilot1/scRNA_bcl2fastq_mm1/SampleSheet_GEX_TT_C9.csv \
+  --barcode-mismatches 1 \
+  --create-fastq-for-index-reads \
+  --minimum-trimmed-read-length 8 \
+  --mask-short-adapter-reads 8 \
+  --ignore-missing-positions \
+  --ignore-missing-controls \
+  --ignore-missing-filter \
+  --ignore-missing-bcls \
+  -r 6 -p 6 -w 6
+
+### 2. FastQC and MultiQC ###
+
+cd /scratch/mozturk/Pilot1/scRNA_bcl2fastq_mm1/fastqs
+
+# create QC directories
+mkdir -p qc_fastqc qc_multiqc
+
+# run FastQC on all FASTQs
+nice -n 19 fastqc *.fastq.gz -o qc_fastqc -t 6
+
+# run MultiQC
+nice -n 19 multiqc qc_fastqc -o qc_multiqc
