@@ -48,3 +48,22 @@ nice -n 19 fastqc *.fastq.gz -o qc_fastqc -t 6
 
 # run MultiQC
 nice -n 19 multiqc qc_fastqc -o qc_multiqc
+
+
+### 3. FastP QC ###
+
+#Fastp is usually a tool used to process fastq files further, trim adapters, remove duplicates etc. However, since the cell ranger requires raw fastq files, fastp will be used to assess the total number of reads and percentage of duplicates, without filtering anything.
+
+fastp \
+  -i /scratch/mozturk/Pilot1/scRNA_bcl2fastq_mm1/fastqs/SI_TT_C9_S1_L001_R1_001.fastq.gz \
+  -I /scratch/mozturk/Pilot1/scRNA_bcl2fastq_mm1/fastqs/SI_TT_C9_S1_L001_R2_001.fastq.gz \
+  -o R1.fastq.gz \
+  -O R2.fastq.gz \
+  -A \
+  -Q \
+  -L \
+  -G \
+  --dont_eval_duplication \
+  --html fastp_report.html \
+  --json fastp_report.json \
+  -w 6
