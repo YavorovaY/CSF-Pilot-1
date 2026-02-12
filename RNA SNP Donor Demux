@@ -1,0 +1,119 @@
+### 1. SNP Calling Preparation - cellSNP-light ###
+
+# cellSNP-light is used to convert the aligned scRNA-seq BAM into SNP-by-cell allele count matrices.
+# The software does not discover variants de novo in scRNA data. Instead, it needs a list of known SNP positions to check.
+# Therefore, we downloaded a common-SNP list for GRCh38 (1000 Genomes; AF-filtered) which focuses on informative polymorphic sites.
+# The common-SNP list was sorted by chromosome and position. Then the file was bgzip-compressed and tabix-indexed.
+
+# The following inputs were provided to cellSNP-lite:
+# Cell Ranger BAM file ( and .bam.bai)
+# Cell Ranger cell barcodes
+# Sorted and indexed SNP file (described above)
+
+# CellSNP-lite scanned the BAM and, for each cell barcode and SNP positions it counts how many reads support REF allele and ALT allele.
+# The produced output is:
+# List of cell barcodes
+# A summary of retained SNPs (623 SNPs)
+# Sparse matrix of ALT allele depth ( variants x cells)
+# Sparese matrix of total depth (variants x cells)
+
+#### CODE ####
+
+cd /scratch/mozturk/Pilot1/donor_demux_RNA
+
+BAM=/scratch/mozturk/Pilot1/GEX_only_SI_TT_C9/outs/possorted_genome_bam.bam
+BARCODES=/scratch/mozturk/Pilot1/GEX_only_SI_TT_C9/outs/filtered_feature_bc_matrix/barcodes.tsv.gz
+VCF_DIR=/scratch/mozturk/Pilot1/donor_demux_RNA/reference_vcf
+VCF_RAW=${VCF_DIR}/genome1K.phase3.SNP_AF5e2.chr1toX.hg38.vcf.gz
+VCF_SORTED=${VCF_DIR}/genome1K.phase3.SNP_AF5e2.chr1toX.hg38.sorted.vcf.gz
+
+OUTDIR=/scratch/mozturk/Pilot1/donor_demux_RNA/cellsnp_output
+
+mkdir -p "$VCF_DIR"
+wget -O "$VCF_RAW" \
+  "https://sourceforge.net/projects/cellsnp/files/SNPlist/genome1K.phase3.SNP_AF5e2.chr1toX.hg38.vcf.gz/download"
+
+zcat "$VCF_RAW" \
+  | grep '^##' > "${VCF_DIR}/header.tmp"
+
+zcat "$VCF_RAW" \
+  | grep -v '^##' \
+  | (head -n 1; tail -n +2 | sort -k1,1 -k2,2n) > "${VCF_DIR}/body.sorted.tmp"
+
+cat "${VCF_DIR}/header.tmp" "${VCF_DIR}/body.sorted.tmp" \
+  | bgzip -c > "$VCF_SORTED"
+
+tabix -p vcf "$VCF_SORTED"
+rm -f "${VCF_DIR}/header.tmp" "${VCF_DIR}/body.sorted.tmp"
+
+rm -rf "$OUTDIR"
+mkdir -p "$OUTDIR"
+
+
+cellsnp-lite \
+  -s "$BAM" \
+  -b "$BARCODES" \
+  -R "$VCF_SORTED" \
+  -O "$OUTDIR" \
+  -p 6
+
+### 2. Vireo Run - 3 donors ###
+
+# Vireo used the allele counts produced in the previous step, to infer:
+# donor-specific genotype profiles
+# per-cell donor assignment probabilities
+# potential doublets
+
+# Vireo was told to look for SNPs belonging to three donors.
+# The produced output was:
+# donor_ids.tsv = The final donor label/cell
+# prob_singlet.tsv.gz = Probability map for each cell
+# prob_doublet.tsv.gz = self explanatory
+# summary.tsv = counts of donor calls/doublets/unassigned under vireo's internal rules. 
+
+#### CODE ####
+
+cd /scratch/mozturk/Pilot1/donor_demux_RNA
+
+vireo \
+  -c cellsnp_output \
+  -N 3 \
+  -o vireo_K3 \
+  -p 6
+
+
+### 3. Vireo 3 Donors - 0.8 Probability Threshold ###
+
+# The goal of the probability threshold was to allow us to compare in downstream Seurat analysis:
+# default vireo calls (more inclusive)
+# stricter vireo calls at max singlet probability >= 0.8 (more confident)
+
+# We used the prob_singlet.tsv.gz probability cell map. There each cell with score below 0.8 was added to the "Unassigned" group.
+
+#### CODE ####
+
+cd /scratch/mozturk/Pilot1/donor_demux_RNA
+
+P=vireo_K3/prob_singlet.tsv.gz
+
+zcat "$P" | awk -F'\t' '
+NR==1{print "cell","donor_call_0.8","max_prob","donor0","donor1","donor2"; next}
+{
+  d0=$2; d1=$3; d2=$4;
+
+  max=d0; call="donor0";
+  if(d1>max){max=d1; call="donor1"}
+  if(d2>max){max=d2; call="donor2"}
+
+  if(max<0.8) call="unassigned_0.8";
+
+  print $1, call, max, d0, d1, d2
+}' OFS='\t' > vireo_K3/donor_calls_thresh0.8.tsv
+
+cut -f2 vireo_K3/donor_calls_thresh0.8.tsv \
+  | tail -n +2 \
+  | sort | uniq -c | sort -nr \
+  > vireo_K3/donor_calls_thresh0.8.counts.txt
+
+cat vireo_K3/donor_calls_thresh0.8.counts.txt
+
