@@ -75,3 +75,21 @@ cd qc_fastqc_multiqc
 
 nice -n 19 multiqc . \
   --filename multiqc_report.html
+
+
+### Run FastP ###
+
+# Fastp is a software used to process fastq files - trimm adapters, remove low quality reads and duplicates etc. However, since cell ranger does not work with filtered reads we used fastp just to assess the number of reads and % of duplicates.
+
+fastp \
+  -i /scratch/mozturk/Pilot1/ATAC_bclconvert_mm2/fastqs/CSF_TT_C9_ATAC_S1_L001_R1_001.fastq.gz \
+  -I /scratch/mozturk/Pilot1/ATAC_bclconvert_mm2/fastqs/CSF_TT_C9_ATAC_S1_L001_R2_001.fastq.gz \
+  -o R1.fastq.gz \
+  -O R2.fastq.gz \
+  -A \
+  -Q \
+  -L \
+  -G \
+  --html fastp_report.html \
+  --json fastp_report.json \
+  -w 6
