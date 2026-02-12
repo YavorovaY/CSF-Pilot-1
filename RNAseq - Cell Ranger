@@ -1,0 +1,16 @@
+### Cell Ranger on the scRNAseq ###
+# Originally a Chromium Multiome must be downstream analyzed with Cell Ranger Arc, created specifically for the multiome chemistry.
+# However, due to the type of sequencing the ATAC data is unanalyzable at this point, and the Cell Ranger ARC cannot process only the RNAseq data.
+# Therefore, we used the normal Cell Ranger Count with an argument specifying the type of chemistry (ARC) and downprocessed only the RNAseq.
+
+cd /scratch/mozturk/Pilot1/
+
+nice -n 19 ~/cellranger-10.0.0/cellranger count \
+  --id=GEX_only_SI_TT_C9 \
+  --create-bam=true \
+  --transcriptome=/mbshome/mozturk/refdata-gex-GRCh38-2020-A \
+  --fastqs=/scratch/mozturk/Pilot1/scRNA_bcl2fastq_mm1/fastqs \
+  --sample=SI_TT_C9 \
+  --chemistry=ARC-v1 \
+  --localcores=6 \
+  --localmem=64
